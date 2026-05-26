@@ -12,6 +12,11 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// Hàm sống còn để nhúng các file JS/CSS tách rời vào file Index chính
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
 // ============================================================================
 // HỆ THỐNG KẾT NỐI DATABASE (DYNAMIC JSON MAPPER)
 // ============================================================================
@@ -43,7 +48,7 @@ function getSheetDataAsObjects_(sheetName) {
 }
 
 // ============================================================================
-// MODULE API CUNG CẤP DỮ LIỆU CHO PORTAL
+// CORE BACKEND APIs (Dữ liệu thô cung cấp cho Client)
 // ============================================================================
 
 function verifyLogin(username, password, roleType) {
@@ -105,7 +110,7 @@ function getDashboardStats() {
       success: true,
       data: {
         totalStudents: activeStudents,
-        totalClasses: classes.length > 0 ? classes.length : 12
+        totalClasses: classes.length > 0 ? classes.length : 0
       }
     };
   } catch (e) {
@@ -114,33 +119,23 @@ function getDashboardStats() {
 }
 
 function getClassSchedules() {
-  try {
-    return { success: true, data: getSheetDataAsObjects_("LICH_CA_HOC") };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
+  try { return { success: true, data: getSheetDataAsObjects_("LICH_CA_HOC") }; } 
+  catch (e) { return { success: false, message: e.message }; }
 }
 
 function getStudentList() {
-  try {
-    return { success: true, data: getSheetDataAsObjects_("HOC_VIEN") };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
+  try { return { success: true, data: getSheetDataAsObjects_("HOC_VIEN") }; } 
+  catch (e) { return { success: false, message: e.message }; }
 }
 
 function getFinanceData() {
   try {
-    var invoices = getSheetDataAsObjects_("HOA_DON");
-    var expenses = getSheetDataAsObjects_("KHOAN_CHI");
     return {
       success: true,
       data: {
-        invoices: invoices,
-        expenses: expenses
+        invoices: getSheetDataAsObjects_("HOA_DON"),
+        expenses: getSheetDataAsObjects_("KHOAN_CHI")
       }
     };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
+  } catch (e) { return { success: false, message: e.message }; }
 }
