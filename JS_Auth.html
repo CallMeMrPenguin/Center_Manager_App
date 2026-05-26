@@ -1,0 +1,117 @@
+<script>
+window.Auth = {
+    login: function() {
+        var user = document.getElementById('username-input').value.trim();
+        var pass = document.getElementById('password-input').value.trim();
+        var type = document.querySelector('input[name="login-type"]:checked').value;
+
+        if (!user || !pass) {
+            window.UI.showError("Vui lòng nhập đầy đủ tài khoản và mật khẩu!");
+            return;
+        }
+
+        window.UI.showLoader("Đang xác thực thông tin tài khoản...");
+        document.getElementById('login-error').style.display = 'none';
+
+        google.script.run
+            .withSuccessHandler(function(response) {
+                window.UI.hideLoader();
+                if (response.success) {
+                    window.AppState.user = response.userData;
+                    window.Auth.initWorkspace();
+                } else {
+                    window.UI.showError(response.message);
+                }
+            })
+            .withFailureHandler(function(error) {
+                window.UI.hideLoader();
+                window.UI.showError("Lỗi kết nối mạng: " + error.message);
+            })
+            .verifyLogin(user, pass, type);
+    },
+
+    logout: function() {
+        if(confirm("Bạn có chắc chắn muốn đăng xuất?")) {
+            document.getElementById('app-interface').style.display = 'none';
+            document.getElementById('login-screen').style.display = 'flex';
+            document.getElementById('username-input').value = '';
+            document.getElementById('password-input').value = '';
+            // Xóa sạch RAM Cache khi đăng xuất để bảo mật dữ liệu nhân sự tiếp theo
+            window.AppState.user = null;
+            window.AppState.dashboardData = null;
+            window.AppState.classData = null;
+            window.AppState.studentData = null;
+            window.AppState.financeData = null;
+        }
+    },
+
+    initWorkspace: function() {
+        var user = window.AppState.user;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app-interface').style.display = 'flex';
+
+        document.getElementById('ui-user-name').innerText = user.name;
+        document.getElementById('ui-user-role').innerText = user.role;
+        document.getElementById('ui-user-avatar').src = 'https://ui-avatars.com/api/?name=' + user.avatarText + '&background=8b5cf6&color=fff';
+
+        var adminMenus = document.querySelectorAll('.admin-only');
+        if (user.type === 'parent') {
+            document.getElementById('brand-name').innerText = "Gemini Portal";
+            adminMenus.forEach(function(el) { el.style.display = 'none'; });
+            window.Auth.renderParentDashboard();
+        } else {
+            document.getElementById('brand-name').innerText = "Gemini Academy";
+            adminMenus.forEach(function(el) { el.style.display = 'flex'; });
+            window.Auth.renderAdminDashboard();
+        }
+    },
+
+    renderAdminDashboard: function() {
+        if(window.AppState.dashboardData) {
+            window.Auth.drawDashboardHtml(window.AppState.dashboardData);
+            return;
+        }
+        window.UI.showLoader("Đang tải số liệu tổng quan...");
+        google.script.run
+            .withSuccessHandler(function(res) {
+                window.UI.hideLoader();
+                if(res.success) {
+                    window.AppState.dashboardData = res.data;
+                    window.Auth.drawDashboardHtml(res.data);
+                }
+            })
+            .getDashboardStats();
+    },
+
+    drawDashboardHtml: function(data) {
+        var html = '' +
+            '<div class="card">' +
+                '<div class="card-title">Tổng Học Viên Đang Học</div>' +
+                '<div class="card-value" style="color: var(--primary);">' + data.totalStudents + '</div>' +
+            '</div>' +
+            '<div class="card">' +
+                '<div class="card-title">Tổng Lớp Đang Hoạt Động</div>' +
+                '<div class="card-value" style="color: var(--success);">' + data.totalClasses + '</div>' +
+            '</div>' +
+            '<div class="card">' +
+                '<div class="card-title">Bộ Nhớ RAM Cache</div>' +
+                '<div class="card-value" style="font-size: 1.2rem; margin-top:0.5rem; color: var(--success);">Đã kích hoạt tối ưu <i class="fa-solid fa-circle-check"></i></div>' +
+            '</div>';
+        document.getElementById('dashboard-stats').innerHTML = html;
+    },
+
+    renderParentDashboard: function() {
+        var user = window.AppState.user;
+        var html = '' +
+            '<div class="card">' +
+                '<div class="card-title">Học Viên Học Tập</div>' +
+                '<div class="card-value" style="color: var(--primary); font-size: 1.5rem;">' + user.studentName + '</div>' +
+            '</div>' +
+            '<div class="card">' +
+                '<div class="card-title">Trạng Thế Học Phí</div>' +
+                '<div class="card-value" style="color: var(--success); font-size: 1.2rem; margin-top:0.5rem;">Đã hoàn thành</div>' +
+            '</div>';
+        document.getElementById('dashboard-stats').innerHTML = html;
+    }
+};
+</script>
