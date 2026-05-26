@@ -1,146 +1,245 @@
-/**
- * ============================================================================
- * GEMINI ACADEMY - BACKEND & DATABASE MANAGER (APPS SCRIPT)
- * ============================================================================
- */
-
-function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-      .evaluate()
-      .setTitle('Gemini Academy - Enterprise Portal')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-// ============================================================================
-// HỆ THỐNG KẾT NỐI DATABASE (DYNAMIC JSON MAPPER)
-// ============================================================================
-function getSheetDataAsObjects_(sheetName) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return [];
-  
-  var data = sheet.getDataRange().getDisplayValues(); 
-  if (data.length <= 1) return []; 
-  
-  var headers = data[0].map(function(h) { return h.toString().trim().toLowerCase(); });
-  var rows = [];
-  
-  for (var i = 1; i < data.length; i++) {
-    var obj = {};
-    var hasData = false;
-    for (var j = 0; j < headers.length; j++) {
-      if (headers[j]) { 
-        obj[headers[j]] = data[i][j];
-        if (data[i][j] !== "") hasData = true;
-      }
-    }
-    if (hasData && obj['stt'] !== "") {
-      rows.push(obj);
-    }
-  }
-  return rows;
-}
-
-// ============================================================================
-// MODULE API CUNG CẤP DỮ LIỆU CHO PORTAL
-// ============================================================================
-
-function verifyLogin(username, password, roleType) {
-  try {
-    username = username.toString().trim();
-    password = password.toString().trim();
-
-    if (roleType === 'admin') {
-      var staffList = getSheetDataAsObjects_("NHAN_VIEN");
-      var user = staffList.find(function(nv) { return nv['username'] === username && nv['password'] === password; });
-      
-      if (user) {
-        if (user['trạng thái'] !== 'Đang Làm Việc') return { success: false, message: "Tài khoản đã bị khóa!" };
-        return {
-          success: true,
-          userData: {
-            id: user['mã nhân viên'],
-            name: user['họ và tên'],
-            role: user['mã chức vụ'], 
-            permissions: user['quyền truy cập'] || 'all', 
-            avatarText: user['họ và tên'].split(' ').pop(), 
-            type: 'admin'
-          }
-        };
-      }
-    } else if (roleType === 'parent') {
-      var studentList = getSheetDataAsObjects_("HOC_VIEN");
-      var parent = studentList.find(function(hs) { return hs['username portal'] === username && hs['password portal'] === password; });
-      
-      if (parent) {
-        if (parent['trạng thái'] === 'Đã Nghỉ') return { success: false, message: "Tài khoản học viên đã ngưng hoạt động." };
-        return {
-          success: true,
-          userData: {
-            id: parent['mã học viên'],
-            studentName: parent['họ và tên'],
-            name: "Phụ Huynh em " + parent['họ và tên'].split(' ').pop(),
-            role: "Phụ Huynh",
-            permissions: "portal-only",
-            avatarText: parent['họ và tên'].split(' ').pop(),
-            type: 'parent'
-          }
-        };
-      }
-    }
-    return { success: false, message: "Sai tên đăng nhập hoặc mật khẩu!" };
-  } catch (error) {
-    return { success: false, message: "Lỗi máy chủ: " + error.message };
-  }
-}
-
-function getDashboardStats() {
-  try {
-    var students = getSheetDataAsObjects_("HOC_VIEN");
-    var activeStudents = students.filter(function(s) { return s['trạng thái'] === 'Đang Học'; }).length;
-    var classes = getSheetDataAsObjects_("DANH_MUC_LOP");
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Academy - Enterprise System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     
-    return {
-      success: true,
-      data: {
-        totalStudents: activeStudents,
-        totalClasses: classes.length > 0 ? classes.length : 12
-      }
-    };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
+    <style>
+        :root {
+            --bg-main: #0b0f19; --bg-sidebar: #111827; --bg-card: #1f2937; --bg-input: #111827;
+            --text-main: #f3f4f6; --text-sub: #9ca3af;
+            --primary: #8b5cf6; --secondary: #3b82f6; 
+            --gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+            --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg-main); color: var(--text-main); min-height: 100vh; overflow-x: hidden; }
 
-function getClassSchedules() {
-  try {
-    return { success: true, data: getSheetDataAsObjects_("LICH_CA_HOC") };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
+        #global-loader {
+            position: fixed; inset: 0; background: rgba(11, 15, 25, 0.8); backdrop-filter: blur(5px);
+            display: none; justify-content: center; align-items: center; z-index: 99999; flex-direction: column; gap: 1rem;
+        }
+        .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-function getStudentList() {
-  try {
-    return { success: true, data: getSheetDataAsObjects_("HOC_VIEN") };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
+        #login-screen { position: fixed; inset: 0; background: radial-gradient(circle at center, #1e1b4b 0%, var(--bg-main) 100%); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { background: var(--bg-sidebar); padding: 2.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 90%; max-width: 400px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+        .login-input { width: 100%; padding: 0.8rem 1rem; background: var(--bg-input); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; text-align: center; font-size: 1rem; margin-bottom: 1rem; outline: none; transition: 0.3s; }
+        .login-input:focus { border-color: var(--primary); }
+        .login-radio-group { display: flex; justify-content: space-around; margin-bottom: 1.5rem; font-size: 0.9rem; color: var(--text-sub); }
+        
+        .btn { padding: 0.8rem 1.2rem; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+        .btn-primary { background: var(--gradient); color: #fff; width: 100%; }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-2px); }
 
-function getFinanceData() {
-  try {
-    var invoices = getSheetDataAsObjects_("HOA_DON");
-    var expenses = getSheetDataAsObjects_("KHOAN_CHI");
-    return {
-      success: true,
-      data: {
-        invoices: invoices,
-        expenses: expenses
-      }
-    };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
+        .app-container { display: flex; min-height: 100vh; }
+        .sidebar { width: 260px; background-color: var(--bg-sidebar); padding: 2rem 1.5rem; display: flex; flex-direction: column; gap: 2rem; border-right: 1px solid rgba(255,255,255,0.02); }
+        .logo-area { display: flex; align-items: center; gap: 0.8rem; font-size: 1.3rem; font-weight: 700; color: #fff; }
+        .logo-area i { color: var(--primary); font-size: 1.6rem; }
+        
+        .menu-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+        .menu-item { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; color: var(--text-sub); border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; }
+        .menu-item:hover, .menu-item.active { background-color: rgba(255,255,255,0.05); color: #fff; }
+        .menu-item.active i { color: var(--primary); }
+
+        .main-content { flex: 1; padding: 2rem; display: flex; flex-direction: column; gap: 2rem; overflow-y: auto; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem; }
+        .user-profile { display: flex; align-items: center; gap: 1rem; }
+        .user-avatar { width: 45px; height: 45px; border-radius: 50%; border: 2px solid var(--primary); padding: 2px; }
+
+        .view-section { display: none; animation: slideUp 0.3s ease; flex-direction: column; gap: 1.5rem; }
+        .view-section.active { display: flex; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; }
+        .card { background-color: var(--bg-card); padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 0.5rem;}
+        .card-title { font-size: 0.9rem; color: var(--text-sub); }
+        .card-value { font-size: 2rem; font-weight: 700; color: #fff; }
+
+        .table-responsive { width: 100%; overflow-x: auto; margin-top: 0.5rem; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; color: var(--text-main); }
+        th, td { padding: 0.85rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; white-space: nowrap; }
+        th { background-color: rgba(0, 0, 0, 0.2); color: var(--text-sub); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+        
+        .badge { padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
+        .badge-success { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        .badge-warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        .badge-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .badge-primary { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+
+        .finance-flex { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        @media (max-width: 1024px) { .finance-flex { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+    <div id="global-loader">
+        <div class="spinner"></div>
+        <div id="loader-text" style="color: #fff; font-weight: 500;">Đang kết nối tới máy chủ Google...</div>
+    </div>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <i class="fa-solid fa-graduation-cap" style="font-size: 3rem; color: var(--primary); margin-bottom: 1rem;"></i>
+            <h2>Gemini Academy</h2>
+            <p style="color: var(--text-sub); font-size: 0.9rem; margin-top: 0.3rem; margin-bottom: 1.5rem;">Cổng Quản Trị Hệ Thống</p>
+            
+            <div class="login-radio-group">
+                <label><input type="radio" name="login-type" value="admin" checked onchange="window.UI.switchLoginType('admin')"> Nhân sự / Quản trị</label>
+                <label><input type="radio" name="login-type" value="parent" onchange="window.UI.switchLoginType('parent')"> Phụ huynh</label>
+            </div>
+
+            <input type="text" id="username-input" class="login-input" placeholder="Tên đăng nhập (VD: admin)...">
+            <input type="password" id="password-input" class="login-input" placeholder="Mật khẩu (VD: admin123)..." onkeypress="if(event.key === 'Enter') window.Auth.login()">
+            
+            <button onclick="window.Auth.login()" class="btn btn-primary">Đăng Nhập <i class="fa-solid fa-arrow-right"></i></button>
+            <p id="login-error" style="color: var(--danger); font-size: 0.85rem; margin-top: 1rem; display: none;"><i class="fa-solid fa-triangle-exclamation"></i> <span>Lỗi</span></p>
+        </div>
+    </div>
+
+    <div class="app-container" id="app-interface" style="display: none;">
+        <aside class="sidebar">
+            <div class="logo-area">
+                <i class="fa-solid fa-bolt"></i> <span id="brand-name">Gemini Academy</span>
+            </div>
+            <ul class="menu-list" id="main-menu">
+                <li class="menu-item active" data-target="view-dashboard" onclick="window.Router.navigate(this)"><i class="fa-solid fa-chart-pie"></i> Bảng Điều Khiển</li>
+                <li class="menu-item admin-only" data-target="view-class" onclick="window.Router.navigate(this)"><i class="fa-solid fa-chalkboard-user"></i> Lịch Ca Học & Điểm Danh</li>
+                <li class="menu-item admin-only" data-target="view-students" onclick="window.Router.navigate(this)"><i class="fa-solid fa-users"></i> Hồ Sơ Học Viên</li>
+                <li class="menu-item admin-only" data-target="view-finance" onclick="window.Router.navigate(this)"><i class="fa-solid fa-wallet"></i> Quản Lý Tài Chính</li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div style="font-size: 1.2rem; font-weight: 600;" id="page-title">Bảng Điều Khiển</div>
+                <div class="user-profile">
+                    <div style="text-align: right;">
+                        <strong id="ui-user-name" style="color:#fff; font-size: 0.95rem;">Đang tải...</strong>
+                        <span id="ui-user-role" style="color: var(--text-sub); font-size: 0.8rem; display:block;">...</span>
+                    </div>
+                    <img id="ui-user-avatar" src="" class="user-avatar" alt="Avatar">
+                    <button onclick="window.Auth.logout()" class="btn" style="background: transparent; color: var(--danger); margin-left: 0.5rem;" title="Đăng xuất"><i class="fa-solid fa-power-off"></i></button>
+                </div>
+            </header>
+
+            <section id="view-dashboard" class="view-section active">
+                <div class="stats-grid" id="dashboard-stats"></div>
+                <div class="card" style="min-height: 180px; display: flex; justify-content: center; align-items: center;">
+                    <p style="color: var(--text-sub); font-size: 0.95rem;"><i class="fa-solid fa-sparkles" style="color:var(--primary)"></i> Chào mừng bạn quay trở lại quản trị hệ thống trung tâm Gemini Academy.</p>
+                </div>
+            </section>
+
+            <section id="view-class" class="view-section">
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                        <h3 style="color:#fff;">Danh Sách Ca Học Trong Ngày</h3>
+                        <span style="font-size:0.85rem; color:var(--text-sub)">Dữ liệu từ tab LICH_CA_HOC</span>
+                    </div>
+                    <div class="table-responsive" id="class-table-container"></div>
+                </div>
+            </section>
+            
+            <section id="view-students" class="view-section">
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                        <h3 style="color:#fff;">Danh Sách Học Viên Trung Tâm</h3>
+                        <span style="font-size:0.85rem; color:var(--text-sub)">Dữ liệu từ tab HOC_VIEN</span>
+                    </div>
+                    <div class="table-responsive" id="students-table-container"></div>
+                </div>
+            </section>
+
+            <section id="view-finance" class="view-section">
+                <div class="stats-grid" id="finance-stats-grid"></div>
+                <div class="finance-flex">
+                    <div class="card">
+                        <h4 style="color:#fff; margin-bottom:0.5rem;"><i class="fa-solid fa-arrow-trend-up" style="color:var(--success)"></i> Các Khoản Thu (Hóa Đơn)</h4>
+                        <div class="table-responsive" id="invoice-table-container"></div>
+                    </div>
+                    <div class="card">
+                        <h4 style="color:#fff; margin-bottom:0.5rem;"><i class="fa-solid fa-arrow-trend-down" style="color:var(--danger)"></i> Các Khoản Chi</h4>
+                        <div class="table-responsive" id="expense-table-container"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // RAM Cache Engine: Lưu cục bộ toàn bộ data tại đây
+        window.AppState = {
+            user: null,
+            dashboardData: null,
+            classData: null,
+            studentData: null,
+            financeData: null
+        };
+
+        window.UI = {
+            showLoader: function(text) {
+                document.getElementById('loader-text').innerText = text || "Đang xử lý...";
+                document.getElementById('global-loader').style.display = 'flex';
+            },
+            hideLoader: function() {
+                document.getElementById('global-loader').style.display = 'none';
+            },
+            showError: function(msg) {
+                var errEl = document.getElementById('login-error');
+                errEl.querySelector('span').innerText = msg;
+                errEl.style.display = 'block';
+            },
+            switchLoginType: function(type) {
+                var input = document.getElementById('username-input');
+                document.getElementById('login-error').style.display = 'none';
+                if(type === 'parent') {
+                    input.placeholder = "Nhập Số điện thoại (VD: '0903123401)...";
+                } else {
+                    input.placeholder = "Tên đăng nhập (VD: admin)...";
+                }
+            },
+            getBadgeHtml: function(status) {
+                if(!status) return "";
+                var s = status.trim();
+                if(s === "Đang Học" || s === "Đã điểm danh" || s === "Đã thanh toán" || s === "Đang Làm Việc") {
+                    return '<span class="badge badge-success">' + s + '</span>';
+                } else if(s === "Chờ dạy" || s === "Đang dạy" || s === "Chưa thanh toán") {
+                    return '<span class="badge badge-warning">' + s + '</span>';
+                } else if(s === "Đã Nghỉ" || s === "Đã hủy") {
+                    return '<span class="badge badge-danger">' + s + '</span>';
+                }
+                return '<span class="badge badge-primary">' + s + '</span>';
+            }
+        };
+
+        window.Router = {
+            navigate: function(menuItemEl) {
+                var targetId = menuItemEl.getAttribute('data-target');
+                
+                document.querySelectorAll('.menu-item').forEach(function(el) { el.classList.remove('active'); });
+                menuItemEl.classList.add('active');
+                
+                document.querySelectorAll('.view-section').forEach(function(el) { el.classList.remove('active'); });
+                document.getElementById(targetId).classList.add('active');
+                
+                document.getElementById('page-title').innerText = menuItemEl.innerText.trim();
+
+                // Gọi Module tương ứng để xử lý nạp/lấy cache dữ liệu
+                if(targetId === 'view-class') window.ModuleClass.init();
+                if(targetId === 'view-students') window.ModuleStudents.init();
+                if(targetId === 'view-finance') window.ModuleFinance.init();
+            }
+        };
+    </script>
+
+    <?!= include('JS_Auth'); ?>
+    <?!= include('JS_Class'); ?>
+    <?!= include('JS_Students'); ?>
+    <?!= include('JS_Finance'); ?>
+
+</body>
+</html>
