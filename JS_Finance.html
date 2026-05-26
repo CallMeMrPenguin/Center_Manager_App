@@ -1,0 +1,77 @@
+<script>
+window.ModuleFinance = {
+    init: function() {
+        // KIỂM TRA CACHE RAM TÀI CHÍNH
+        if (window.AppState.financeData) {
+            window.ModuleFinance.render(window.AppState.financeData);
+            return;
+        }
+
+        window.UI.showLoader("Đang đồng bộ sổ thu chi tài chính...");
+        google.script.run
+            .withSuccessHandler(function(res) {
+                window.UI.hideLoader();
+                if(res.success) {
+                    window.AppState.financeData = res.data; // Caching dữ liệu thô thu chi
+                    window.ModuleFinance.render(res.data);
+                }
+            })
+            .getFinanceData();
+    },
+
+    render: function(resData) {
+        var totalIn = 0;
+        var totalOut = 0;
+
+        // 1. Kết xuất bảng Thu (Hóa đơn)
+        var htmlIn = '<table><thead><tr><th>Mã HĐ</th><th>Tên Học Viên</th><th>Số Tiền Thu</th><th>Hình Thức</th></tr></thead><tbody>';
+        if(resData.invoices && resData.invoices.length > 0) {
+            resData.invoices.forEach(function(row) {
+                var num = parseFloat((row['số tiền thu'] || '0').replace(/,/g, '')) || 0;
+                totalIn += num;
+                htmlIn += '<tr>' +
+                    '<td>' + (row['mã hóa đơn'] || '') + '</td>' +
+                    '<td>' + (row['tên học viên'] || '') + '</td>' +
+                    '<td style="color:var(--success)">+' + (row['số tiền thu'] || '0') + '</td>' +
+                    '<td>' + (row['hình thức'] || '') + '</td>' +
+                '</tr>';
+            });
+        }
+        htmlIn += '</tbody></table>';
+        document.getElementById('invoice-table-container').innerHTML = htmlIn;
+
+        // 2. Kết xuất bảng Chi
+        var htmlOut = '<table><thead><tr><th>Khoản Chi</th><th>Số Tiền Chi</th><th>Ngày Chi</th></tr></thead><tbody>';
+        if(resData.expenses && resData.expenses.length > 0) {
+            resData.expenses.forEach(function(row) {
+                var num = parseFloat((row['số tiền chi'] || '0').replace(/,/g, '')) || 0;
+                totalOut += num;
+                htmlOut += '<tr>' +
+                    '<td>' + (row['khoản chi'] || '') + '</td>' +
+                    '<td style="color:var(--danger)">-' + (row['số tiền chi'] || '0') + '</td>' +
+                    '<td>' + (row['ngày chi'] || '') + '</td>' +
+                '</tr>';
+            });
+        }
+        htmlOut += '</tbody></table>';
+        document.getElementById('expense-table-container').innerHTML = htmlOut;
+
+        // 3. Đếm nhanh số dư ngân quỹ thực tế hiển thị lên Card
+        var remain = totalIn - totalOut;
+        var statsHtml = '' +
+            '<div class="card">' +
+                '<div class="card-title">Tổng Doanh Thu (Hóa Đơn)</div>' +
+                '<div class="card-value" style="color: var(--success); font-size:1.6rem;">' + totalIn.toLocaleString('vi-VN') + ' đ</div>' +
+            '</div>' +
+            '<div class="card">' +
+                '<div class="card-title">Tổng Các Khoản Chi Chi Ra</div>' +
+                '<div class="card-value" style="color: var(--danger); font-size:1.6rem;">' + totalOut.toLocaleString('vi-VN') + ' đ</div>' +
+            '</div>' +
+            '<div class="card">' +
+                '<div class="card-title">Tồn Quỹ Thực Tế</div>' +
+                '<div class="card-value" style="color: var(--primary); font-size:1.6rem;">' + remain.toLocaleString('vi-VN') + ' đ</div>' +
+            '</div>';
+        document.getElementById('finance-stats-grid').innerHTML = statsHtml;
+    }
+};
+</script>
