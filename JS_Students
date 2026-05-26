@@ -1,0 +1,44 @@
+<script>
+window.ModuleStudents = {
+    init: function() {
+        // KIỂM TRA CACHE RAM
+        if (window.AppState.studentData) {
+            window.ModuleStudents.render(window.AppState.studentData);
+            return;
+        }
+
+        window.UI.showLoader("Đang tải dữ liệu hồ sơ học viên...");
+        google.script.run
+            .withSuccessHandler(function(res) {
+                window.UI.hideLoader();
+                if(res.success) {
+                    window.AppState.studentData = res.data; // Lưu dữ liệu vào RAM
+                    window.ModuleStudents.render(res.data);
+                }
+            })
+            .getStudentList();
+    },
+
+    render: function(data) {
+        if(data.length > 0) {
+            var html = '<table><thead><tr><th>Mã HV</th><th>Họ và Tên</th><th>Ngày Sinh</th><th>Trường Học</th><th>Liên Hệ Chính</th><th>SĐT Bố/Mẹ</th><th>Trạng Thái</th></tr></thead><tbody>';
+            data.forEach(function(row) {
+                var phone = row['sđt bố'] || row['sđt mẹ'] || '';
+                html += '<tr>' +
+                    '<td><strong>' + (row['mã học viên'] || '') + '</strong></td>' +
+                    '<td>' + (row['họ và tên'] || '') + '</td>' +
+                    '<td>' + (row['ngày sinh'] || '') + '</td>' +
+                    '<td>' + (row['trường học'] || '') + '</td>' +
+                    '<td>' + (row['liên hệ chính'] || '') + '</td>' +
+                    '<td>' + phone + '</td>' +
+                    '<td>' + window.UI.getBadgeHtml(row['trạng thái']) + '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('students-table-container').innerHTML = html;
+        } else {
+            document.getElementById('students-table-container').innerHTML = '<p style="color:var(--text-sub)">Không có dữ liệu học viên.</p>';
+        }
+    }
+};
+</script>
