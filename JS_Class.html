@@ -1,0 +1,44 @@
+<script>
+window.ModuleClass = {
+    init: function() {
+        // KIỂM TRA CACHE: Nếu trong RAM đã có dữ liệu, vẽ luôn lập tức (0 giây chờ)
+        if (window.AppState.classData) {
+            window.ModuleClass.render(window.AppState.classData);
+            return;
+        }
+        
+        // Nếu RAM trống (lần click đầu tiên), tải từ server Google và lưu lại
+        window.UI.showLoader("Đang tải lịch ca học từ máy chủ...");
+        google.script.run
+            .withSuccessHandler(function(res) {
+                window.UI.hideLoader();
+                if(res.success) {
+                    window.AppState.classData = res.data; // Lưu cache
+                    window.ModuleClass.render(res.data);
+                }
+            })
+            .getClassSchedules();
+    },
+
+    render: function(data) {
+        if(data.length > 0) {
+            var html = '<table><thead><tr><th>Mã Ca</th><th>Lớp</th><th>Ngày Học</th><th>Giờ Học</th><th>Giáo Viên</th><th>Trợ Giảng</th><th>Trạng Thái</th></tr></thead><tbody>';
+            data.forEach(function(row) {
+                html += '<tr>' +
+                    '<td><strong>' + (row['mã ca học'] || '') + '</strong></td>' +
+                    '<td>' + (row['lớp học'] || '') + '</td>' +
+                    '<td>' + (row['ngày học'] || '') + '</td>' +
+                    '<td>' + (row['giờ học'] || '') + '</td>' +
+                    '<td>' + (row['giáo viên'] || '') + '</td>' +
+                    '<td>' + (row['trợ giảng'] || '') + '</td>' +
+                    '<td>' + window.UI.getBadgeHtml(row['trạng thái']) + '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('class-table-container').innerHTML = html;
+        } else {
+            document.getElementById('class-table-container').innerHTML = '<p style="color:var(--text-sub)">Không có dữ liệu ca học.</p>';
+        }
+    }
+};
+</script>
